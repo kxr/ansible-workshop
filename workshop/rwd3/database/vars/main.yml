@@ -1,0 +1,6 @@
+---
+
+db_port: 3306 
+dbname: myappdb
+dbuser: mydbuser
+upassword: mypassword

@@ -1,0 +1,5 @@
+---
+
+approot: /var/www/app 
+dbuser: mydbuser
+upassword: mypassword

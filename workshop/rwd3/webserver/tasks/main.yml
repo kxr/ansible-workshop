@@ -1,0 +1,43 @@
+---
+
+- name: Install Webserver
+  yum:
+    name: "{{ item }}"
+    state: present
+  with_items:
+    - httpd
+    - php
+    - php-mysql
+
+- name: Start Apache Webserver
+  service:
+    name: httpd
+    state: started
+    enabled: yes
+
+- name: Create webadmin user
+  user:
+    name: webadmin
+    comment: "Web Admin User"
+    groups: apache
+
+- name: Create Apache vhost
+  template:
+    src: templates/vhost.conf.j2
+    dest: /etc/httpd/conf.d/vhost.conf
+  notify:
+    - restart httpd
+
+- name: Create App root directory
+  file:
+    path: "{{ approot }}"
+    state: directory
+    owner: webadmin
+    group: apache
+    mode: 0755
+
+- name: Deploy Application
+  template:
+    src: templates/index.php.j2
+    dest: "{{ approot }}/index.php"
+

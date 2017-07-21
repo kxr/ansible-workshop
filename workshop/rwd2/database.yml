@@ -45,15 +45,16 @@
     mysql_db:
       name: "{{ dbname }}"
       state: present
-      when: not ansible_check_mode
+    when: not ansible_check_mode
 
   - name: Create Application DB User
     mysql_user:
       name: "{{ dbuser }}"
       password: "{{ upassword }}"
-      priv: "*.*:ALL"
+      priv: "{{ dbname }}.*:ALL"
       host: "%"
       state: present
+    when: not ansible_check_mode
 
   handlers:
   - name: restart mariadb

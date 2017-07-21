@@ -1,0 +1,24 @@
+<html>
+ <head>
+  <title>Simple Application of {{ appname }}</title>
+ </head>
+ <body>
+<?php 
+ Print "Hello, World! I am a web server configured using Ansible and I am : ";
+ echo exec('hostname');
+ Print  "</BR>";
+echo  "List of Databases: </BR>";
+        {% for host in groups['dbservers'] %}
+                $link = mysqli_connect('{{ hostvars[groups['dbservers'][0]].ansible_default_ipv4.address }}', '{{ dbuser }}', '{{ upassword }}') or die(mysqli_connect_error($link));
+        {% endfor %}
+        $res = mysqli_query($link, "SHOW DATABASES;");
+        while ($row = mysqli_fetch_assoc($res)) {
+                echo $row['Database'] . "\n";
+        }
+?>
+ </br>
+  I am running on {{ ansible_default_ipv4.address }}
+ </br>
+
+</body>
+</html> 
