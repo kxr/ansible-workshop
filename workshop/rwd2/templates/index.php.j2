@@ -1,24 +1,24 @@
 <html>
  <head>
-  <title>Simple Application of {{ appname }}</title>
+  <title>Sample Application of {{ appname }}</title>
  </head>
  <body>
-<?php 
- Print "Hello, World! I am a web server configured using Ansible and I am : ";
- echo exec('hostname');
- Print  "</BR>";
-echo  "List of Databases: </BR>";
-        {% for host in groups['dbservers'] %}
-                $link = mysqli_connect('{{ hostvars[groups['dbservers'][0]].ansible_default_ipv4.address }}', '{{ dbuser }}', '{{ upassword }}') or die(mysqli_connect_error($link));
-        {% endfor %}
-        $res = mysqli_query($link, "SHOW DATABASES;");
-        while ($row = mysqli_fetch_assoc($res)) {
+ <h2>Hello {{ appname }}! <h2>
+ <h4>This is a sample web application configured using Ansible</h4>
+ <h4>This web server is running on <?php  echo exec('hostname'); ?></h4>
+ <br /><hr />
+ <h3>Database Connection Information <h3>
+ <h4> Database host: {{ hostvars[groups['dbservers'][0]].ansible_default_ipv4.address }}</h4>
+ <?php
+      $link = mysqli_connect('{{ hostvars[groups['dbservers'][0]].ansible_default_ipv4.address }}', '{{ dbuser }}', '{{ upassword }}') or die(mysqli_connect_error($link));
+      print "<h4> I was able to connect to the database successfully</h4>";
+      print "<h4> I can see the following databases </h4>";
+      print "<pre>";
+      $res = mysqli_query($link, "SHOW DATABASES;");
+      while ($row = mysqli_fetch_assoc($res)) {
                 echo $row['Database'] . "\n";
         }
+      print "</pre>"
 ?>
- </br>
-  I am running on {{ ansible_default_ipv4.address }}
- </br>
-
 </body>
 </html> 

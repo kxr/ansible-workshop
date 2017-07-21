@@ -1,0 +1,10 @@
+[app]
+webserver.labXX
+database.labXX
+
+[webservers]
+webserver.labXX
+
+[dbservers]
+database.labXX
+

@@ -61,6 +61,7 @@ chmod 700 /home/lab\$i/.ssh
 echo 'Host *' > /home/lab\$i/.ssh/config
 echo 'User root' >> /home/lab\$i/.ssh/config
 chmod 600 /home/lab\$i/.ssh/config
+chown -R lab\$i /home/lab\$i/.ssh 
 echo \"Lab3nv\$i\" | passwd lab\$i --stdin
 iptables -A OUTPUT -m owner --uid-owner 10\$i -d 10.0.\$i.0/24 -j ACCEPT
 echo \"10.0.\$i.10 acs.lab\$i\" >> /etc/hosts
@@ -101,7 +102,7 @@ aws ec2 create-route --route-table-id $private_rt --destination-cidr-block 0.0.0
 #################
 
 
-for G in {10..10}
+for G in {10..20}
 do
 
 #Security Group
@@ -128,7 +129,8 @@ systemctl restart sshd
 echo 'ansible$G' | passwd root --stdin
 hostnamectl set-hostname --static acs.lab$G
 echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
-yum -y install vim
+yum -y install vim git
+git clone https://github.com/kxr/ansible-workshop /opt/
 
 "
 
