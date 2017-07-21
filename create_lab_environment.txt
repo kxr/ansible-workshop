@@ -1,0 +1,168 @@
+#######
+# VPC #
+#######
+
+vpcid=$(aws ec2 create-vpc --cidr-block 10.0.0.0/16 --no-amazon-provided-ipv6-cidr-block | jq .Vpc.VpcId | sed 's/"//g')
+igw=$(aws ec2 create-internet-gateway | jq .InternetGateway.InternetGatewayId | sed 's/"//g')
+aws ec2 attach-internet-gateway --internet-gateway-id $igw --vpc-id $vpcid
+
+private_rt=$(aws ec2 create-route-table --vpc-id $vpcid | jq .RouteTable.RouteTableId | sed 's/"//g')
+public_rt=$(aws ec2 create-route-table --vpc-id $vpcid |  jq .RouteTable.RouteTableId | sed 's/"//g')
+aws ec2 create-route --route-table-id $public_rt --destination-cidr-block 0.0.0.0/0 --gateway-id $igw
+
+
+
+private_subnetid=$(aws ec2 create-subnet --vpc-id $vpcid --cidr-block 10.0.0.0/17 | jq .Subnet.SubnetId | sed 's/"//g')
+aws ec2 associate-route-table --route-table-id $private_rt --subnet-id $private_subnetid
+
+public_subnetid=$(aws ec2 create-subnet --vpc-id $vpcid --cidr-block 10.0.128.0/17  | jq .Subnet.SubnetId | sed 's/"//g')
+aws ec2 associate-route-table --route-table-id $public_rt --subnet-id $public_subnetid
+
+
+################
+# Bastian host #
+################
+
+bastiansgid=$(aws ec2 create-security-group --vpc-id $vpcid --group-name "bastian" --description "bastian" | jq .[] | sed 's/"//g' )
+aws ec2 authorize-security-group-ingress --group-id $bastiansgid --protocol tcp --port 80 --cidr 0.0.0.0/0
+aws ec2 authorize-security-group-ingress --group-id $bastiansgid --protocol tcp --port 22 --cidr 0.0.0.0/0
+
+
+ec2bastian=$(aws ec2 run-instances --image-id ami-061b1560 --instance-type t2.nano --subnet-id $public_subnetid --security-group-ids $bastiansgid \
+--block-device-mappings 'DeviceName="/dev/sda1",Ebs={DeleteOnTermination=true,SnapshotId=snap-00f18f3f6413c7879,VolumeSize=8,VolumeType=gp2}' \
+--tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=bastian}]" "ResourceType=volume,Tags=[{Key=Name,Value=bastian}]" \
+--associate-public-ip-address --private-ip-address "10.0.200.100" \
+--user-data "\
+#!/bin/bash
+sed -i 's/^SELINUX=enforcing/SELINUX=disabled/' /etc/selinux/config
+setenforce 0
+echo 'export PS1=\"[\[\e[1;96m\]\u@\h\[\e[0m\] \W]\$ \"' > /etc/profile.d/z-extras.sh
+sed -i 's#^PasswordAuthentication .*#PasswordAuthentication yes#' /etc/ssh/sshd_config
+systemctl restart sshd
+echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC0pQf6QPskCZ9ih8AlhuDZrl1Stz9ACVZ81In4UEQd6kv4qSJvlgWTVZWAr4MQcwX6MblnhEgrvmQNJ4PUiYkRSyrodxGbx26rDHTRBnjvcy/IRHVPxrK8S5cTFhXQZ+cI1VTZSH8iloESpnrq8hqcoTx6VG8Yf6kdkyC7vOEZ/iVHRh11xqDPHXqIm+joBOouBDL1zFT+7lqn/NBAGDXJuYorIZrzE6myGViAFbrhq3WbT6VxDx+ozoMBx4UkgMbi9XCNXF0jhQYvPS0hRZm5Ot5UetPjFVTzjo1fl6EJM0XjHk86kixA5tMuTUsjgtewJLRBPjXKnJvVT+do9wyL root@L3033.etqm.global' > /root/.ssh/authorized_keys
+hostnamectl set-hostname --static bastian.lab
+echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+yum -y install iptables-services
+yum -y install iptables-utils
+systemctl start iptables
+systemctl enable iptables
+iptables -D FORWARD -j REJECT --reject-with icmp-host-prohibited
+iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -m owner --uid-owner 0 -j ACCEPT
+iptables -A OUTPUT -d 10.0.0.2/32 -j ACCEPT
+iptables -A OUTPUT -p tcp --dport 80 -j ACCEPT
+iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+
+for i in {10..99}
+do
+useradd --uid 10\$i lab\$i
+mkdir /home/lab\$i/.ssh
+chmod 700 /home/lab\$i/.ssh
+echo 'Host *' > /home/lab\$i/.ssh/config
+echo 'User root' >> /home/lab\$i/.ssh/config
+chmod 600 /home/lab\$i/.ssh/config
+echo \"Lab3nv\$i\" | passwd lab\$i --stdin
+iptables -A OUTPUT -m owner --uid-owner 10\$i -d 10.0.\$i.0/24 -j ACCEPT
+echo \"10.0.\$i.10 acs.lab\$i\" >> /etc/hosts
+echo \"10.0.\$i.11 webserver.lab\$i\" >> /etc/hosts
+echo \"10.0.\$i.12 database.lab\$i\" >> /etc/hosts
+done
+
+iptables -A OUTPUT -j REJECT
+iptables -t nat -A POSTROUTING -o eth0 -s 10.0.0.0/17 -j MASQUERADE 
+iptables-save > /etc/sysconfig/iptables
+echo "net.ipv4.ip_forward=1" > /etc/sysctl.d/ip_forward.conf
+
+yum -y install vim httpd elinks mysql epel-release
+echo 'ProxyRequests Off' > /etc/httpd/conf.d/proxy.conf
+echo 'ProxyPreserveHost On' >> /etc/httpd/conf.d/proxy.conf
+echo 'RequestHeader unset Accept-Encoding' >> /etc/httpd/conf.d/proxy.conf
+echo '<Location />' >> /etc/httpd/conf.d/proxy.conf
+echo '   Order allow,deny' >> /etc/httpd/conf.d/proxy.conf
+echo '   Allow from all' >> /etc/httpd/conf.d/proxy.conf
+echo '</Location>' >> /etc/httpd/conf.d/proxy.conf
+echo 'ProxyPassMatch /(.*) http://webserver.\$1' >> /etc/httpd/conf.d/proxy.conf
+echo 'ProxyPassReverse /(.*) http://webserver.\$1' >> /etc/httpd/conf.d/proxy.conf
+
+yum -y update
+yum -y install htop
+
+systemctl enable httpd
+systemctl start httpd
+reboot
+" | jq .Instances[0].InstanceId | sed 's/"//g' )
+
+sleep 20
+aws ec2 modify-instance-attribute --instance-id $ec2bastian --source-dest-check "{\"Value\": false}"
+aws ec2 create-route --route-table-id $private_rt --destination-cidr-block 0.0.0.0/0 --instance-id $ec2bastian
+
+#################
+# Lab Instances #
+#################
+
+
+for G in {10..10}
+do
+
+#Security Group
+sg=$(aws ec2 create-security-group --vpc-id $vpcid --group-name "lab$G" --description "lab$G" | jq .[] | sed 's/"//g' )
+aws ec2 authorize-security-group-ingress --group-id $sg --protocol all --source-group $sg
+aws ec2 authorize-security-group-ingress --group-id $sg --protocol all --source-group $bastiansgid
+aws ec2 authorize-security-group-ingress --group-id $bastiansgid --protocol all --source-group $sg
+
+
+#ACS
+aws ec2 run-instances --image-id ami-061b1560 --instance-type t2.nano --subnet-id $private_subnetid --security-group-ids $sg \
+--block-device-mappings 'DeviceName="/dev/sda1",Ebs={DeleteOnTermination=true,SnapshotId=snap-00f18f3f6413c7879,VolumeSize=8,VolumeType=gp2}' \
+--tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=lab-$G-acs}]" "ResourceType=volume,Tags=[{Key=Name,Value=lab-$G-acs}]" \
+--no-associate-public-ip-address --private-ip-address "10.0.$G.10" \
+--user-data "\
+#!/bin/bash
+echo '10.0.$G.10 acs.lab$G' >> /etc/hosts
+echo '10.0.$G.11 webserver.lab$G' >> /etc/hosts
+echo '10.0.$G.12 database.lab$G' >> /etc/hosts
+echo 'export PS1=\"[\[\e[1;31m\]\u@\h\[\e[0m\] \W]\$ \"' > /etc/profile.d/z-extras.sh
+rm -f /root/.ssh/authorized_keys
+sed -i 's#^PasswordAuthentication .*#PasswordAuthentication yes#' /etc/ssh/sshd_config
+systemctl restart sshd
+echo 'ansible$G' | passwd root --stdin
+hostnamectl set-hostname --static acs.lab$G
+echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+yum -y install vim
+
+"
+
+#WEB
+aws ec2 run-instances --image-id ami-061b1560 --instance-type t2.nano --subnet-id $private_subnetid --security-group-ids $sg \
+--block-device-mappings 'DeviceName="/dev/sda1",Ebs={DeleteOnTermination=true,SnapshotId=snap-00f18f3f6413c7879,VolumeSize=8,VolumeType=gp2}' \
+--tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=lab-$G-web}]" "ResourceType=volume,Tags=[{Key=Name,Value=lab-$G-web}]" \
+--no-associate-public-ip-address --private-ip-address "10.0.$G.11" \
+--user-data "\
+#!/bin/bash
+echo 'export PS1=\"[\[\e[1;93m\]\u@\h\[\e[0m\] \W]\$ \"' > /etc/profile.d/z-extras.sh
+rm -f /root/.ssh/authorized_keys
+sed -i 's#^PasswordAuthentication .*#PasswordAuthentication yes#' /etc/ssh/sshd_config
+systemctl restart sshd
+echo 'webserver$G' | passwd root --stdin
+hostnamectl set-hostname --static webserver.lab$G
+echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+
+"
+
+#DB
+aws ec2 run-instances --image-id ami-061b1560 --instance-type t2.nano --subnet-id $private_subnetid --security-group-ids $sg \
+--block-device-mappings 'DeviceName="/dev/sda1",Ebs={DeleteOnTermination=true,SnapshotId=snap-00f18f3f6413c7879,VolumeSize=8,VolumeType=gp2}' \
+--tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=lab-$G-db}]" "ResourceType=volume,Tags=[{Key=Name,Value=lab-$G-db}]" \
+--no-associate-public-ip-address --private-ip-address "10.0.$G.12" \
+--user-data "\
+#!/bin/bash
+echo 'export PS1=\"[\[\e[1;92m\]\u@\h\[\e[0m\] \W]\$ \"' > /etc/profile.d/z-extras.sh
+rm -f /root/.ssh/authorized_keys
+sed -i 's#^PasswordAuthentication .*#PasswordAuthentication yes#' /etc/ssh/sshd_config
+systemctl restart sshd
+echo 'database$G' | passwd root --stdin
+hostnamectl set-hostname --static database.lab$G
+echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+"
+
+done

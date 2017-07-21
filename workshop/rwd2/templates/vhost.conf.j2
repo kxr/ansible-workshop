@@ -1,0 +1,16 @@
+ServerName webserver.lab
+RemoteIPHeader X-Forwarded-For
+LogFormat "%v %a %l %u %t \"%r\" %>s %b \"%{Referer}i\" \"%{User-Agent}i\"" combined
+CustomLog "logs/access_log" combined
+
+<Directory "{{ approot }}">
+	Options Indexes FollowSymLinks
+	DirectoryIndex index.html index.php
+	AllowOverride All
+	Require all granted
+</Directory>
+
+<VirtualHost _default_:80>
+	ServerName webserver.lab
+	DocumentRoot {{ approot }}
+</VirtualHost>

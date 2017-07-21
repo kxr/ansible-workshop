@@ -1,0 +1,11 @@
+---
+- hosts: all
+
+  tasks:
+
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+
+  - name: Reboot
+    command: /sbin/reboot

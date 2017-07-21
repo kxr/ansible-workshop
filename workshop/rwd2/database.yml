@@ -1,0 +1,62 @@
+---
+######################
+### Database Play ####
+######################
+
+- hosts: dbservers
+
+  vars:
+    db_port: 3306
+    dbname: myappdb
+    dbuser: mydbuser
+    upassword: mypassword
+
+
+  tasks:
+
+  - name: Install MariaDB Server
+    yum:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - mariadb-server
+      - MySQL-python
+
+  - name: Start MariaDB Server
+    service:
+      name: mariadb
+      state: started
+      enabled: yes
+
+  - name: Create dbadmin user
+    user:
+      name: dbadmin
+      comment: "DB Admin User"
+      groups: mysql
+
+  - name: Create Mysql configuration file
+    template:
+      src: templates/my.cnf.j2
+      dest: /etc/my.cnf
+    notify:
+      - restart mariadb
+
+  - name: Create Application Database
+    mysql_db:
+      name: "{{ dbname }}"
+      state: present
+      when: not ansible_check_mode
+
+  - name: Create Application DB User
+    mysql_user:
+      name: "{{ dbuser }}"
+      password: "{{ upassword }}"
+      priv: "*.*:ALL"
+      host: "%"
+      state: present
+
+  handlers:
+  - name: restart mariadb
+    service:
+      name: mariadb
+      state: restarted

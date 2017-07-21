@@ -1,0 +1,4 @@
+*.odp
+*.odp*
+*.odp#
+backup/

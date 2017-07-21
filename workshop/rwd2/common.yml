@@ -1,0 +1,48 @@
+---
+- hosts: all
+
+  vars:
+    ntpserver: 0.ie.pool.ntp.org
+
+  tasks:
+
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+
+  - name: Create Common Directories
+    file:
+      path: /root/{{ item }}
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+    with_items:
+      - docs
+      - apps
+      - backups
+      - scripts
+      - bin
+
+  - name: Install Common Packages
+    yum:
+      name: "{{ item }}"
+      state: present
+    with_items:
+      - vim
+      - tcpdump
+      - wget
+      - screen
+      - mysql
+      - ntp
+      - bind-utils
+
+  - name: Setup ntp service
+    template:
+      src: templates/ntp.conf.j2
+      dest: /etc/ntp.conf
+  - name: Start the ntp service
+    service:
+      name: ntpd
+      state: started
+      enabled: yes

@@ -1,0 +1,62 @@
+---
+####################
+### Common Play ####
+####################
+- hosts: all
+  tasks:
+  - name: Disable SELinux
+    selinux:
+      state: disabled
+  - name: Create MyFiles Directory
+    file:
+      path: /root/MyFiles
+      state: directory
+      owner: root
+      group: root
+      mode: 0755
+  - name: Install Vim
+    yum:
+      name: vim
+      state: present
+
+#######################
+### Webserver Play ####
+#######################
+- hosts: webservers
+  tasks:
+  - name: Install Apache Webserver
+    yum:
+      name: httpd
+      state: present
+
+  - name: Start Apache Webserver
+    service:
+      name: httpd
+      state: started
+      enabled: yes
+  - name: Create webadmin user
+    user:
+      name: webadmin
+      comment: "Web Admin User"
+      groups: apache
+
+######################
+### Database Play ####
+######################
+- hosts: dbservers
+  tasks:
+  - name: Install MariaDB Server
+    yum:
+      name: mariadb-server
+      state: present
+
+  - name: Start MariaDB Server
+    service:
+      name: mariadb
+      state: started
+      enabled: yes
+  - name: Create dbadmin user
+    user:
+      name: dbadmin
+      comment: "DB Admin User"
+      groups: mysql
