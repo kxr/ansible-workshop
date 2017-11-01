@@ -1,3 +1,4 @@
+export AWS_DEFAULT_PROFILE="personal"
 #######
 # VPC #
 #######
@@ -28,7 +29,7 @@ aws ec2 authorize-security-group-ingress --group-id $bastiansgid --protocol tcp 
 aws ec2 authorize-security-group-ingress --group-id $bastiansgid --protocol tcp --port 22 --cidr 0.0.0.0/0
 
 
-ec2bastian=$(aws ec2 run-instances --image-id ami-061b1560 --instance-type t2.nano --subnet-id $public_subnetid --security-group-ids $bastiansgid \
+ec2bastian=$(aws ec2 run-instances --image-id ami-061b1560 --instance-type t2.micro --subnet-id $public_subnetid --security-group-ids $bastiansgid \
 --block-device-mappings 'DeviceName="/dev/sda1",Ebs={DeleteOnTermination=true,SnapshotId=snap-00f18f3f6413c7879,VolumeSize=8,VolumeType=gp2}' \
 --tag-specifications "ResourceType=instance,Tags=[{Key=Name,Value=bastian}]" "ResourceType=volume,Tags=[{Key=Name,Value=bastian}]" \
 --associate-public-ip-address --private-ip-address "10.0.200.100" \
@@ -102,7 +103,7 @@ aws ec2 create-route --route-table-id $private_rt --destination-cidr-block 0.0.0
 #################
 
 
-for G in {10..20}
+for G in {10..25}
 do
 
 #Security Group
@@ -129,6 +130,8 @@ systemctl restart sshd
 echo 'ansible$G' | passwd root --stdin
 hostnamectl set-hostname --static acs.lab$G
 echo 'preserve_hostname: true' >> /etc/cloud/cloud.cfg
+echo 'set background=dark' > /root/.vimrc
+sleep 180
 yum -y install vim git
 git clone https://github.com/kxr/ansible-workshop /opt/
 
